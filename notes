@@ -1,0 +1,49 @@
+=========================================================================
+http://lists.freedesktop.org/archives/mesa-users/2010-October/000128.html
+No glXBindTexImageEXT
+
+http://fixunix.com/xwindows/91864-glxmakecurrent-xmapwindow.html
+
+========================================================
+glXMakeCurrent(m_display, m_window, m_windowGlXContext);
+XMapWindow(m_display, m_window);
+XIfEvent(m_display, &event, WaitForMapNotify, m_window);
+XSync(m_display, 1);
+
+where
+
+Bool WaitForMapNotify(Display *d, XEvent *e, char *arg)
+{ return (e->type == MapNotify) &&
+(e->xmap.window == (Window)arg); }glXMakeCurrent(m_display, m_window, m_windowGlXContext);
+
+===================================================
+void XWindow::CopyToOverlay() {
+  //DEBUG << "CopyToOverlay: xwin=0x" << hex << id_;
+
+  // FIXME: XCompositeNameWindowPixmap() will fail if the window isn't
+  // viewable (maybe one of its ancestors is unmapped). Metacity just goes
+  // ahead and calls it and traps the error; I should probably do the same.
+  XWindowAttributes attr;
+  XGrabServer(dpy());
+  XGetWindowAttributes(dpy(), id_, &attr);
+  if (attr.map_state != IsViewable) {
+    XUngrabServer(dpy());
+    DEBUG << "X window 0x" << hex << id_ << " isn't viewable; aborting copying "
+          << "to overlay";
+    return;
+  }
+  Pixmap pixmap = XCompositeNameWindowPixmap(dpy(), id_);
+  XUngrabServer(dpy());
+  //DEBUG << "Copying pixmap " << pixmap << " with size (" << width_
+  // << ", " << height_ << ") to (" << x_ << ", " << y_ << ")";
+  XCopyArea(dpy(),
+            pixmap,
+            XServer::Get()->overlay(),
+            XServer::Get()->gc(),
+            0, // src_x
+            0, // src_y
+            width_,
+            height_,
+            x_, // dest_x
+            y_); // dest_y
+}
