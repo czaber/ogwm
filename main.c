@@ -42,10 +42,10 @@ void on_keypress(XEvent* e) {
 void on_expose(XEvent* e) { }
 void on_maprequest(XEvent* e) {
 	Window w = e->xany.window;
-	if (w == root || w == overlay ||  w == frontplane || w == backplane)
+	if (w == root ||  w == frontplane || w == backplane)
 		return;
 	XMapWindow(dpy, w);
-	info("Mapping window %d\n", w);
+	info("Mapped window %d\n", w);
 }
 void on_enternotify(XEvent* e) { }
 void on_mapnotify(XEvent* e) {
@@ -62,6 +62,9 @@ void on_mapnotify(XEvent* e) {
 	XWindowAttributes attr;
 	Pixmap pixmap;
 	Window w = e->xany.window;
+	if (w == root || w == overlay ||  w == frontplane || w == backplane)
+		return;
+	
 	*(void**) (&BindTexImageEXT) = glXGetProcAddress("glXBindTexImageEXT");
 	debug("Got glXBindTexImageEXT\n");
 	*(void**) (&ReleaseTexImageEXT) = glXGetProcAddress("glXReleaseTexImageEXT");
@@ -108,19 +111,15 @@ void on_mapnotify(XEvent* e) {
 
 	pixmap = XCompositeNameWindowPixmap(dpy, w);
 	debug("Got pixmap for window %d -> %d\n", w, pixmap);
-	XSync(dpy, 0);
 	
 	glxpixmap = glXCreatePixmap(dpy, fbc[i], pixmap, pixmapAttr);
 	debug("Got GLXpixmap for pixmap %d -> %d\n", pixmap, glxpixmap);
-	XSync(dpy, 0);
 	
 	glGenTextures(1, &texture);
 	debug("Generated texture %d\n", texture);
-	XSync(dpy, 0);
 	
 	glBindTexture(GL_TEXTURE_2D, texture);
 	debug("Binded texture %d\n", texture);
-	XSync(dpy, 0);
 	
 
 	BindTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT, NULL);
@@ -131,9 +130,8 @@ void on_mapnotify(XEvent* e) {
 
 	debug("Start Quad\n");
 	glBegin(GL_QUADS);
-	glColor3f(1.0f, 0.0f, 0.0f);
 	glTexCoord2d(0.0f, bottom);
-	glVertex2d(0.0f, 0.0f);
+	glVertex2d(2.0f, 0.1f);
 	glTexCoord2d(0.0f, top);
 	glVertex2d(0.0f, 1.0f);
 	glTexCoord2d(1.0f, top);
@@ -152,6 +150,13 @@ void on_mapnotify(XEvent* e) {
 void on_unmapnotify(XEvent* e) { }
 void on_buttonpressed(XEvent* e) { }
 void on_destroynotify(XEvent* e) { }
+void on_createnotify(XEvent* e) {
+	Window w = e->xcreatewindow.window;
+	if (w == root || w == overlay)
+		return;
+	debug("Reparenting %d to overlay\n", w);
+	XReparentWindow(dpy, w, overlay, 0, 0);
+}
 void on_configurenotify(XEvent* e) { }
 void on_configurerequest(XEvent* e) { }
 
@@ -236,10 +241,8 @@ void setup_gl(void) {
 void setup_x(void) {
 	screen = DefaultScreen(dpy);
 	root = RootWindow(dpy, screen);
+	debug("root present => %d\n", root);
 	
-	// Tell X server to redirect client output off-screen
-	XCompositeRedirectSubwindows(dpy, overlay, CompositeRedirectAutomatic);
-	debug("[Setup] Composition enabled for root window %d\n", root);
 	// Get notified when windows are created
 	XSelectInput (dpy, root, SubstructureNotifyMask|SubstructureRedirectMask);
 	info("[Setup] We are going to be notified\n");
@@ -252,6 +255,11 @@ void setup_x(void) {
 	frontplane = create_frontplane();
 	debug("Frontplane present => %d\n", frontplane);
 	info("We are ready to go\n");
+
+	//XSelectInput (dpy, overlay, SubstructureNotifyMask|SubstructureRedirectMask);
+	// Tell X server to redirect client output off-screen
+	XCompositeRedirectSubwindows(dpy, overlay, CompositeRedirectAutomatic);
+	debug("[Setup] Composition enabled for root window %d\n", root);
 	
 	stop = 0;
 }
@@ -274,7 +282,7 @@ void clean(void) {
 int main(int argc, char** argv) {
 	dpy = XOpenDisplay(NULL);
 	if(!dpy)
-		die(ERR_CANNOT_OPEN_DISPLAY, "Cannot open display!");
+		die(ERR_CANNOT_OPEN_DISPLAY, "Cannot open display!\n");
 
 	setup_x();
 	setup_gl();

@@ -22,6 +22,7 @@ void on_enternotify(XEvent* e);
 void on_unmapnotify(XEvent* e);
 void on_buttonpressed(XEvent* e);
 void on_destroynotify(XEvent* e);
+void on_createnotify(XEvent* e);
 void on_configurenotify(XEvent* e);
 void on_configurerequest(XEvent* e);
 
@@ -44,6 +45,7 @@ static void (*events[EVENTS_SIZE])(XEvent* e) = {
 	[UnmapNotify] = on_unmapnotify,
 	[ButtonPress] = on_buttonpressed,
 	[DestroyNotify] = on_destroynotify,
+	[CreateNotify] = on_createnotify,
 	[ConfigureNotify] = on_configurenotify,
 	[ConfigureRequest] = on_configurerequest
 };
@@ -56,10 +58,11 @@ static char* event_names[EVENTS_SIZE] = {
 	[FocusOut] = "FocusOut",
 	[MapRequest] = "MapRequest",
 	[MapNotify] = "MapNotify",
-	[CreateNotify] = "CreateNotfiy",
+	[CreateNotify] = "CreateNotify",
 	[EnterNotify] = "EnterNotify",
 	[UnmapNotify] = "UnmapNotify",
 	[ButtonPress] = "ButtonPress",
+	[ReparentNotify] = "ReparentNotify",
 	[DestroyNotify] = "DestroyNotify",
 	[ConfigureNotify] = "ConfigureNotify",
 	[ConfigureRequest] = "ConfigureRequest"
