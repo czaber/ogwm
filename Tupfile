@@ -1,1 +1,1 @@
-: main.c |> gcc -Wall -o uwm main.c -lX11 -lXext -lXcomposite -lXfixes -lGL -lGLU |> uwm
+: main.c |> gcc -g -Wall -o uwm main.c -lX11 -lXext -lXcomposite -lXfixes -lGL -lGLU |> uwm

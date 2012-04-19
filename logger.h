@@ -28,9 +28,9 @@ void logger(int level, const char* format, ...) {
 		return;
 	switch(level) {
 		case DEBUG: fprintf(stderr, "\033[0;34m[DEBUG]"); break;
-		case ERROR: fprintf(stderr, "\033[0;33m[ERROR]"); break;
+		case ERROR: fprintf(stderr, "\033[0;31m[ERROR]"); break;
 		case INFO: fprintf(stderr, "\033[0;32m[INFO]"); break;
-		case WARN: fprintf(stderr, "\033[0;31m[WARN]"); break;
+		case WARN: fprintf(stderr, "\033[0;33m[WARN]"); break;
 		case NOTIFY: fprintf(stderr, "\033[0;35m[NOTIFY]"); break;
 		default: fprintf(stderr, "\033[0;35m[LOG]"); break;
 	}

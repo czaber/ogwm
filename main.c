@@ -125,13 +125,21 @@ GLXFBConfig fbconfig(Window w, GLfloat *top, GLfloat *bottom) {
 	return fbc[i];
 }
 
+void check_gl(int line) {
+	GLenum err = glGetError();
+	if (err != GL_NO_ERROR)
+		error("[Draw] Error 0x%x while drawing in line %d\n", (int)err, line);
+}
+
 void draw() {
 	int i;
 	int pixmapAttr[] = {GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT, 
 			    GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_RECTANGLE_EXT, None};
 	GLfloat top, bottom;
 	GLuint texture;
-	
+
+	XGrabServer(dpy);
+	XSync(dpy, 0);
 	glClear(GL_COLOR_BUFFER_BIT);
 	glBegin(GL_QUADS);
 	glColor3f(.7, 0., .9);
@@ -150,13 +158,14 @@ void draw() {
 		GLXFBConfig fbc = fbconfig(w, &top, &bottom);
 		Pixmap pixmap = XCompositeNameWindowPixmap(dpy, w);
 		XSync(dpy, 0);
-		info("Got pixmap\n");
+		info("Got pixmap. Bottom is %f, Top is %f.\n", bottom, top);
 		GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbc, pixmap, pixmapAttr);
 		glGenTextures(1, &texture);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		BindTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT, NULL);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);	
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 		glBegin(GL_QUADS);
 		glColor3d(0.8, 0.3, 0.0);
 		glTexCoord2d(0.0f, bottom);	glVertex2d(0.0f, 0.0f);
@@ -166,9 +175,8 @@ void draw() {
 		glEnd();
 		ReleaseTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT);
 	}
-	XSync(dpy, 0);
-
 	glXSwapBuffers(dpy, overlay);
+	XUngrabServer(dpy);
 
 }
 
@@ -276,7 +284,8 @@ void setup_gl(void) {
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_LINE_SMOOTH); glHint(GL_LINE_SMOOTH,GL_NICEST);
+	glEnable(GL_LINE_SMOOTH); glHint(GL_LINE_SMOOTH_HINT,GL_NICEST);
+	glEnable(GL_TEXTURE_2D);
 
 	*(void**) (&BindTexImageEXT) = glXGetProcAddress((GLubyte*)"glXBindTexImageEXT");
 	*(void**) (&ReleaseTexImageEXT) = glXGetProcAddress((GLubyte*)"glXReleaseTexImageEXT");
