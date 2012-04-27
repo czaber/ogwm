@@ -11,7 +11,7 @@
 #include <X11/extensions/Xfixes.h>
 #include <X11/extensions/shape.h>
 // Internal
-#include "uwm.h"
+#include "main.h"
 // Logging
 #define LOG_LEVEL DEBUG
 #include "logger.h"
@@ -27,8 +27,10 @@ static Window frontplane = 0;
 static Window overlay = 0;
 
 void list_windows();
-void (*BindTexImageEXT)(Display*, GLXDrawable, int, const int*);
-void (*ReleaseTexImageEXT)(Display*, GLXDrawable, int);
+
+void (*glXQueryDrawableProc)(Display*, GLXDrawable, int, const int*);
+void (*glXBindTexImageProc)(Display*, GLXDrawable, int, const int*);
+void (*glXReleaseTexImageProc)(Display*, GLXDrawable, int);
 
 void del(Window w) {
 	int i;
@@ -90,7 +92,7 @@ GLXFBConfig fbconfig(Window w, GLfloat *top, GLfloat *bottom) {
 	int i;
 	int nfbc;
 	XWindowAttributes attr;
-	XGetWindowAttributes(dpy, w, &attr);
+	XGetWindowAttributes(dpy, overlay, &attr);
 	VisualID vid = XVisualIDFromVisual(attr.visual);
 	GLXFBConfig* fbc = glXGetFBConfigs(dpy, screen, &nfbc);
 	for (i=0; i<nfbc; i++) {
@@ -104,7 +106,7 @@ GLXFBConfig fbconfig(Window w, GLfloat *top, GLfloat *bottom) {
 			continue;
 		
 		glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_TARGETS_EXT, &v);
-		if (!(v & GLX_TEXTURE_2D_BIT_EXT))
+		if (!(v & GLX_TEXTURE_RECTANGLE_BIT_EXT))
 			continue;
 		
 		glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &v);
@@ -129,12 +131,12 @@ void check_gl(int line) {
 	GLenum err = glGetError();
 	if (err != GL_NO_ERROR)
 		error("[Draw] Error 0x%x while drawing in line %d\n", (int)err, line);
+	else
+		debug("[Draw] No error\n");
 }
 
 void draw() {
 	int i;
-	int pixmapAttr[] = {GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT, 
-			    GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_RECTANGLE_EXT, None};
 	GLfloat top, bottom;
 	GLuint texture;
 
@@ -149,32 +151,49 @@ void draw() {
 	glVertex3f( .95,  .95, 0.);
 	glVertex3f(-.95,  .95, 0.);
 	glEnd();
-
+	
 	for (i=0; i<MAX_WINDOWS; i++) {
+		Window r;
+		unsigned int unused;
+		unsigned int width, height;
+		int x, y;
+		int preserve, pbuffer, fbid;
 		if (workspace == NULL || workspace[i] == 0)
 			break;
 		Window w = workspace[i];
 		info("Drawing %d window => 0x%x\n", i, w);
-		GLXFBConfig fbc = fbconfig(w, &top, &bottom);
-		Pixmap pixmap = XCompositeNameWindowPixmap(dpy, w);
+		GLXFBConfig fbc = fbconfig(w, &top, &bottom); check_gl(__LINE__);
+		Pixmap pixmap = XCompositeNameWindowPixmap(dpy, w); check_gl(__LINE__);
 		XSync(dpy, 0);
-		info("Got pixmap. Bottom is %f, Top is %f.\n", bottom, top);
-		GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbc, pixmap, pixmapAttr);
-		glGenTextures(1, &texture);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		BindTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT, NULL);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		XGetGeometry(dpy, pixmap, &r, &x, &y, &width, &height, &unused, &unused);
+		info("Got pixmap 0x%x. Width is %d, height is %d, Bottom is %f, Top is %f.\n", pixmap, width, height, bottom, top);
+		GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbc, pixmap, pixmap_attr);
+		check_gl(__LINE__);
+		//glXQueryDrawableProc(dpy, glxpixmap, GLX_WIDTH, &width);
+		//glXQueryDrawableProc(dpy, glxpixmap, GLX_HEIGHT, &height);
+		//glXQueryDrawableProc(dpy, glxpixmap, GLX_PRESERVED_CONTENTS, &preserve);
+		//glXQueryDrawableProc(dpy, glxpixmap, GLX_LARGEST_PBUFFER, &pbuffer);
+		//glXQueryDrawableProc(dpy, glxpixmap, GLX_FBCONFIG_ID, &fbid);
+		debug("Got GLXPixmap 0x%x, w = %d, h = %d, pc = %d, lpbuff = %d, fbconfig = %d\n", glxpixmap, width, height, preserve, pbuffer, fbid);
+		glGenTextures(1, &texture);check_gl(__LINE__);
+		glBindTexture(GL_TEXTURE_RECTANGLE, texture);check_gl(__LINE__);
+		glXBindTexImageProc(dpy, glxpixmap, GLX_FRONT_LEFT_EXT, NULL);check_gl(__LINE__);
+		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		check_gl(__LINE__);	
+		//glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+		check_gl(__LINE__);	
 		glBegin(GL_QUADS);
-		glColor3d(0.8, 0.3, 0.0);
-		glTexCoord2d(0.0f, bottom);	glVertex2d(0.0f, 0.0f);
-		glTexCoord2d(0.0f, top);	glVertex2d(0.0f, 1.0f);
-		glTexCoord2d(1.0f, top);	glVertex2d(1.0f, 1.0f);
-		glTexCoord2d(1.0f, bottom);	glVertex2d(1.0f, 0.0f);
-		glEnd();
-		ReleaseTexImageEXT (dpy, glxpixmap, GLX_FRONT_LEFT_EXT);
+		glColor3d(0.8, 0.0, 0.0);
+		glTexCoord2d(0.0f, bottom);	glVertex2d(-0.5f,-0.5f);
+		glTexCoord2d(0.0f, top);	glVertex2d(-0.5f, 0.5f);
+		glTexCoord2d(1.0f, top);	glVertex2d( 0.5f, 0.5f);
+		glTexCoord2d(1.0f, bottom);	glVertex2d( 0.5f,-0.5f);
+		glEnd();check_gl(__LINE__);
+		glXReleaseTexImageProc(dpy, glxpixmap, GLX_FRONT_LEFT_EXT);
+		check_gl(__LINE__);
 	}
+	glFlush();
 	glXSwapBuffers(dpy, overlay);
 	XUngrabServer(dpy);
 
@@ -256,7 +275,7 @@ Window create_backplane(void) {
 }
 
 Window create_frontplane(void) {
-	Window w;
+	Window w = 0;
 	return w;
 }
 
@@ -269,26 +288,26 @@ void ignore_input(Window w) {
 }
 
 void setup_gl(void) {
-	GLint glattr[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
 	XWindowAttributes xattr;
 	XVisualInfo* vi;
 	GLXContext glc;
 
 	XGetWindowAttributes(dpy, overlay, &xattr);
 
-	vi = glXChooseVisual(dpy, 0, glattr);
-	glc = glXCreateContext(dpy, vi, NULL, GL_TRUE);
+	vi = glXChooseVisual(dpy, 0, gl_attr);
+	glc = glXCreateContext(dpy, vi, NULL, GL_FALSE);
 
 	glXMakeCurrent(dpy, overlay, glc);
 	glViewport(0, 0, xattr.width, xattr.height);
-	glEnable(GL_DEPTH_TEST);
-	glEnable(GL_BLEND);
-	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glEnable(GL_LINE_SMOOTH); glHint(GL_LINE_SMOOTH_HINT,GL_NICEST);
-	glEnable(GL_TEXTURE_2D);
+	glEnable(GL_TEXTURE_RECTANGLE);
+	//glEnable(GL_DEPTH_TEST);
+	//glEnable(GL_BLEND);
+	//glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	//glEnable(GL_LINE_SMOOTH); glHint(GL_LINE_SMOOTH_HINT,GL_NICEST);
 
-	*(void**) (&BindTexImageEXT) = glXGetProcAddress((GLubyte*)"glXBindTexImageEXT");
-	*(void**) (&ReleaseTexImageEXT) = glXGetProcAddress((GLubyte*)"glXReleaseTexImageEXT");
+	*(void**) (&glXQueryDrawableProc) = glXGetProcAddress((GLubyte*)"glXQueryDrawable");
+	*(void**) (&glXBindTexImageProc) = glXGetProcAddress((GLubyte*)"glXBindTexImageEXT");
+	*(void**) (&glXReleaseTexImageProc) = glXGetProcAddress((GLubyte*)"glXReleaseTexImageEXT");
 }
 
 void setup_x(void) {
@@ -337,7 +356,7 @@ void _list_windows(int w, int indent) {
 
 	for (j=0; j<indent; j++)
 		fprintf(stderr," ");
-	fprintf(stderr,"0x%x (0x%x)\n", w, p);
+	fprintf(stderr,"0x%x (0x%x)\n", (unsigned int) w, (unsigned int) p);
 	for (i=0; i<nc; i++)
 		_list_windows(c[i], indent+2);
 	XFree(c);

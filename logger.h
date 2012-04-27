@@ -20,7 +20,7 @@
 #define warn(args...)	logger(WARN, args)
 #define notify(args...)	logger(NOTIFY, args)
 
-#define die(status,args...) {error(args); exit(status);}
+#define die(status,args...) {error(args); exit(status); clean();}
 
 void logger(int level, const char* format, ...) {
 	va_list args;
