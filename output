@@ -1,0 +1,32 @@
+INFO] Drawing 0 window => 0x40000a
+[DEBUG] [14] (0x20cb) = 0xffffffff
+[DEBUG] [14] (0x20cc) = 0xffffffff
+[DEBUG] [14] (0x20cd) = 0xffffffff
+[DEBUG] [14] (0x20ce) = 0xffffffff
+[DEBUG] [14] (0x20cf) = 0xffffffff
+[DEBUG] [14] (0x20d0) = 0x1
+[DEBUG] [14] (0x20d1) = 0x1
+[DEBUG] [14] (0x20d2) = 0x0
+[DEBUG] [14] (0x20d3) = 0x7
+[DEBUG] [14] (0x20d4) = 0xffffffff
+[DEBUG] [14] (0x20d5) = 0xffffffff
+[DEBUG] [14] (0x20d6) = 0xffffffff
+[DEBUG] [14] (0x20d7) = 0xffffffff
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[INFO] Got pixmap. Bottom is 0.000000, Top is 1.000000.
+[DEBUG] [Draw] No error
+[DEBUG] GLX_TEXTURE_FORMAT_EXT (0x20d5) = 0x0
+[DEBUG] GLX_TEXTURE_TARGET_EXT (0x20d6) = 0x20dd
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[DEBUG] [Draw] No error
+[INFO] [Event] Got UnmapNotify event
+[INFO] [Event] Got DestroyNotify event
+[DEBUG] [DestroyNotify] Destroying 0x40000a
+[DEBUG] [DelWindow] Deleted window 0x40000a from position 0
+
