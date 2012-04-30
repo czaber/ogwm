@@ -7,6 +7,7 @@
 #endif//LOG_LEVEL
 // Errors
 #define ERR_CANNOT_OPEN_DISPLAY 1
+#define ERR_INVALID_TEXTURE 2
 // Log levels
 #define DEBUG	4
 #define INFO	3
