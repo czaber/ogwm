@@ -16,8 +16,10 @@
 // Defines
 #define EVENTS_SIZE LASTEvent
 
+void draw(void);
 void print(Window w);
 void for_windows(Window w, void (*f)(Window w));
+void on_clientmessage(XEvent* e);
 void on_keypress(XEvent* e) {};
 void on_expose(XEvent* e) {};
 void on_maprequest(XEvent* e);
@@ -43,6 +45,7 @@ GLXFBConfig choose_fbconfig();
 
 typedef struct _Client {
 	Window window;
+	XWindowAttributes geom;
 	GLXPixmap glxpixmap;
 	GLenum target;
 	GLuint texture;
@@ -61,13 +64,14 @@ static void (*events[EVENTS_SIZE])(XEvent* e) = {
 	[VisibilityNotify] = on_visibilitynotify,
 	[CreateNotify] = on_createnotify,
 	[ConfigureNotify] = on_configurenotify,
-	[ConfigureRequest] = on_configurerequest
+	[ConfigureRequest] = on_configurerequest,
+	[ClientMessage] = on_clientmessage
 };
 
 static char* event_names[EVENTS_SIZE] = {
 	//[KeyPress] = "KeyPress",
 	//[MotionNotify] = "MotionNotify",
-	[Expose] = "Expose",
+	//[Expose] = "Expose",
 	//[FocusIn] = "FocusIn",
 	//[FocusOut] = "FocusOut",
 	[MapRequest] = "MapRequest",
@@ -80,13 +84,16 @@ static char* event_names[EVENTS_SIZE] = {
 	[DestroyNotify] = "DestroyNotify",
 	[VisibilityNotify] = "VisibilityNotify",
 	[ConfigureNotify] = "ConfigureNotify",
-	[ConfigureRequest] = "ConfigureRequest"
+	[ConfigureRequest] = "ConfigureRequest",
+	[ClientMessage] = "ClientMessage"
 };
 
 //static int gl_attr[] = { GLX_RGBA, GLX_DOUBLEBUFFER, None };
 //static int pixmap_attr[] = {GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT, 
 //			    GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_RECTANGLE_EXT, None};
-static int gl_attr[] = {
+static int fbconfig_attr[] = {
+	GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
+	GLX_BIND_TO_MIPMAP_TEXTURE_EXT, True,
         GLX_DOUBLEBUFFER, True, // We want double-buffering
         GLX_DEPTH_SIZE, 24, // Highest non-RGBA depth possible
         GLX_RENDER_TYPE, GLX_RGBA_BIT, // Don't consider indexed color configs
@@ -94,14 +101,6 @@ static int gl_attr[] = {
         GLX_X_RENDERABLE, True, // Only consider configs that have an associated X visual
 	None
 };
-/*static int pixmap_config[] = {
-	GLX_DRAWABLE_TYPE, GLX_PIXMAP_BIT,
-	GLX_BIND_TO_TEXTURE_TARGETS_EXT, GLX_TEXTURE_RECTANGLE_BIT_EXT,
-	GLX_BIND_TO_TEXTURE_RGBA_EXT, True,
-	GLX_DOUBLEBUFFER, False,
-	GLX_Y_INVERTED_EXT, GLX_DONT_CARE,
-	None
-};*/
 static int pixmap_attr[] = {
 	GLX_TEXTURE_FORMAT_EXT, GLX_TEXTURE_FORMAT_RGBA_EXT, 
 	GLX_TEXTURE_TARGET_EXT, GLX_TEXTURE_RECTANGLE_BIT_EXT,

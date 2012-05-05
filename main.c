@@ -1,5 +1,6 @@
 // Standard
 #include <string.h>
+#include <unistd.h>
 // OpenGL (GLX)
 #include <GL/glx.h>
 #include <GL/glxext.h>
@@ -31,6 +32,8 @@ void (*glXReleaseTexImageProc)(Display*, GLXDrawable, int);
 
 // Options
 Bool direct = True;
+GLfloat left = 0.0f;
+GLfloat right = 1.0f;
 GLfloat top = 0.0f;
 GLfloat bottom = 1.0f;
 int width = 0;
@@ -66,15 +69,18 @@ void add(Window w) {
 	for (i=0; i<MAX_CLIENTS && workspace[i].window != 0; i++)
 		if (workspace[i].window == 0)
 			break;
-	
 	GLenum target;
 	GLuint texture;
 	GLXFBConfig fbc = choose_fbconfig();
 	Pixmap pixmap = XCompositeNameWindowPixmap(dpy, w);
 	GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbc, pixmap, pixmap_attr);
 	check_gl(__LINE__);
+	glXQueryDrawable(dpy, glxpixmap, GLX_WIDTH, &target);
+	check_gl(__LINE__); debug("GLX is %d width\n", target);
+	glXQueryDrawable(dpy, glxpixmap, GLX_HEIGHT, &target);
+	check_gl(__LINE__); debug("GLX is %d height\n", target);
         glXQueryDrawable(dpy, glxpixmap, GLX_TEXTURE_TARGET_EXT, &target);
-	check_gl(__LINE__);
+	check_gl(__LINE__); debug("GLX is 0x%x\n", target);
 	glGenTextures(1, &texture);
 	check_gl(__LINE__);
 	
@@ -96,6 +102,7 @@ void add(Window w) {
 	workspace[i].glxpixmap = glxpixmap;
 	workspace[i].target = target;
 	workspace[i].texture = texture;
+	XGetWindowAttributes(dpy, w, &(workspace[i].geom));
 }
 
 
@@ -113,6 +120,11 @@ void on_maprequest(XEvent* e) {
 	info("[MapRequest] Mapping 0x%x\n", w);
 }
 
+void on_clientmessage(XEvent* e) {
+	info("Got client message\n");
+	draw();
+}
+
 void fbconfig_attrs(GLXFBConfig fbc, int* width, int* height,
 	GLfloat* top, GLfloat* bottom) {
 	int v;
@@ -127,7 +139,7 @@ void fbconfig_attrs(GLXFBConfig fbc, int* width, int* height,
 
 GLXFBConfig choose_fbconfig() {
 	int i, nfbc;
-    	GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, gl_attr, &nfbc);
+    	GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, fbconfig_attr, &nfbc);
 	check_gl(__LINE__);
 	for (i=0; i<nfbc; i++) {
 		/*
@@ -170,8 +182,10 @@ void draw_background() {
 
 void draw() {
 	int i;
-	XGrabServer(dpy);
-	XSync(dpy, 0);
+	GLfloat width, height;
+	glXWaitX(); check_gl(__LINE__);
+	//XGrabServer(dpy);
+	glClearColor(0.4, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT); check_gl(__LINE__);
 	
 	draw_background();
@@ -180,31 +194,48 @@ void draw() {
 		if (workspace == NULL || workspace[i].window == 0)
 			break;
 		Client client = workspace[i];
-		info("Drawing %d window => 0x%x\n", i, client.window);
+		width = (GLfloat)client.geom.width;
+		height = (GLfloat)client.geom.height;
+		info("Drawing %d window => 0x%x, %f x %f\n", i, client.window, width, height);
+		if(client.geom.depth == 32) {
+                	info("Using blending\n");
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // X windows are premultiplied
+		} else
+                	glDisable(GL_BLEND);
+
         	
- 	   	glEnable(client.target); check_gl(__LINE__);
-		glBindTexture(client.target, client.texture); check_gl(__LINE__);
-		glXBindTexImageProc(dpy, client.glxpixmap, GLX_FRONT_LEFT_EXT, NULL);
+ 	   	glEnable(client.target); check_gl(__LINE__); 
+		glBindTexture(client.target, client.texture); check_gl(__LINE__); 
+		glXBindTexImageProc(dpy, client.glxpixmap, GLX_FRONT_LEFT_EXT, NULL); 
 		check_gl(__LINE__);
-		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MIN_FILTER, GL_LINEAR); 
+		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR); 
 		check_gl(__LINE__);
 		glBegin(GL_QUADS);
-			glColor3d(0.8, 0.0, 0.0);
-			glTexCoord2d(0.0f, bottom);	glVertex2d(-0.5f,-0.5f);
-			glTexCoord2d(0.0f, top);	glVertex2d(-0.5f, 0.5f);
-			glTexCoord2d(1.0f, top);	glVertex2d( 0.5f, 0.5f);
-			glTexCoord2d(1.0f, bottom);	glVertex2d( 0.5f,-0.5f);
+			glColor3d(0.0, 0.0, 0.0);
+			glTexCoord2f(left*width,  bottom*height);	glVertex2f(-width/200.0f,-height/200.0f);
+			glTexCoord2f(left*width,     top*height);	glVertex2f(-width/200.0f,+height/200.0f);
+			glTexCoord2f(right*width,    top*height);	glVertex2f(+width/200.0f,+height/200.0f);
+			glTexCoord2f(right*width, bottom*height);	glVertex2f(+width/200.0f,-height/200.0f);
 		glEnd();
 		check_gl(__LINE__);
-		glBindTexture(client.target, 0); check_gl(__LINE__);
-		glDisable(client.target); check_gl(__LINE__);
-		glXReleaseTexImageProc(dpy, client.glxpixmap, GLX_FRONT_LEFT_EXT);
+		glBindTexture(client.target, 0); check_gl(__LINE__); 
+		glDisable(client.target); check_gl(__LINE__); 
+		glXReleaseTexImageProc(dpy, client.glxpixmap, GLX_FRONT_LEFT_EXT); 
 		check_gl(__LINE__);
 	}
-        glXWaitGL(); check_gl(__LINE__);
-	glXSwapBuffers(dpy, canvas); check_gl(__LINE__);
-	XUngrabServer(dpy);
+        glXWaitGL(); check_gl(__LINE__); 
+	glXSwapBuffers(dpy, canvas); check_gl(__LINE__); 
+	usleep(2000);  // 50Hz
+	XEvent ev;
+	ev.type = ClientMessage;
+	ev.xclient.display = dpy;
+	ev.xclient.window = root;
+	ev.xclient.format = 8;
+	XSendEvent(dpy, overlay, False, SubstructureNotifyMask, &ev);
+	XFlush(dpy);
+	//XUngrabServer(dpy);
 }
 
 void on_mapnotify(XEvent* e) {
@@ -214,7 +245,6 @@ void on_mapnotify(XEvent* e) {
 		return;
 	debug("[MapNotify] Mapped 0x%x to 0x%x\n", w, p);
 	add(w);
-	draw();
 }
 
 void on_destroynotify(XEvent* e) {
@@ -222,7 +252,6 @@ void on_destroynotify(XEvent* e) {
 	if (w == root || w == overlay)
 		return;
 	del(w);
-	draw();
 }
 void on_createnotify(XEvent* e) {
 	Window w = e->xcreatewindow.window;
@@ -275,16 +304,15 @@ void ignore_input(Window w) {
 }
 
 void setup_gl(void) {
-	if(direct && !glXIsDirect(dpy, context))
+	if (direct && !glXIsDirect(dpy, context))
 		warn("Server doesn't support direct rendering! Falling back to indirect.\n");
 	direct = glXIsDirect(dpy, context); check_gl(__LINE__);
-	if(direct)
-		info("Using direct rendering\n");
-	else
-        	info("Using indirect rendering\n");
+	if (direct) info("Using direct rendering\n");
+	else        info("Using indirect rendering\n");
 
 	glEnable(GL_TEXTURE_RECTANGLE_ARB); check_gl(__LINE__);
-	glDrawBuffer(GL_BACK); check_gl(__LINE__);
+	
+	//glDrawBuffer(GL_BACK); check_gl(__LINE__);
 
 	*(void**) (&glXQueryDrawableProc) = glXGetProcAddress((GLubyte*)"glXQueryDrawable");
 	*(void**) (&glXBindTexImageProc) = glXGetProcAddress((GLubyte*)"glXBindTexImageEXT");
@@ -313,6 +341,7 @@ void start(void) {
 	XEvent ev;
 	XSync(dpy, 0);
 	debug("[Start] Started\n");
+	draw();
 	while(!stop && !XNextEvent(dpy, &ev))
 		on_event(&ev);
 }
@@ -335,7 +364,8 @@ void for_windows(Window w, void (*f)(Window w)) {
 
 int main(int argc, char** argv) {
 	dpy = XOpenDisplay(NULL);
-	if(!dpy) die(ERR_CANNOT_OPEN_DISPLAY, "Cannot open display!\n");
+	if(!dpy)
+		die(ERR_CANNOT_OPEN_DISPLAY, "Cannot open display!\n");
 	setup_x();
 	setup_gl();
 	start();
