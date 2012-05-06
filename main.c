@@ -1,6 +1,7 @@
 // Standard
 #include <string.h>
 #include <unistd.h>
+#include <signal.h>
 // OpenGL (GLX)
 #include <GL/glx.h>
 #include <GL/glxext.h>
@@ -10,11 +11,12 @@
 // Extensions
 #include <X11/extensions/Xcomposite.h>
 #include <X11/extensions/Xfixes.h>
+#include <X11/extensions/Xdamage.h>
 #include <X11/extensions/shape.h>
 // Internal
 #include "main.h"
 // Logging
-#define LOG_LEVEL DEBUG
+#define LOG_LEVEL LOG
 #include "logger.h"
 #define MAX_CLIENTS 7
 
@@ -36,6 +38,7 @@ GLfloat left = 0.0f;
 GLfloat right = 1.0f;
 GLfloat top = 0.0f;
 GLfloat bottom = 1.0f;
+GLfloat ratio = 1.0f;
 int width = 0;
 int height = 0;
 
@@ -56,9 +59,11 @@ void del(Window w) {
 }
 
 void add(Window w) {
+    XWindowAttributes attr;
 	int i;
 	if (w == root || w == overlay || w == canvas-1)
 		return;
+
 	debug("[AddWindow] Adding window 0x%x\n", w);
 
 	if (workspace == NULL) {
@@ -69,17 +74,26 @@ void add(Window w) {
 	for (i=0; i<MAX_CLIENTS && workspace[i].window != 0; i++)
 		if (workspace[i].window == 0)
 			break;
-	GLenum target;
+	
+	unsigned int v;
+    int target;
 	GLuint texture;
 	GLXFBConfig fbc = choose_fbconfig();
 	Pixmap pixmap = XCompositeNameWindowPixmap(dpy, w);
+    debug("Got pixmap 0x%x for 0x%x\n", pixmap, w);
+    XGetWindowAttributes(dpy, w, &attr);
+    if (attr.depth == 32)
+        pixmap_attr[1] = GLX_TEXTURE_FORMAT_RGBA_EXT;
+    else
+        pixmap_attr[1] = GLX_TEXTURE_FORMAT_RGB_EXT;
 	GLXPixmap glxpixmap = glXCreatePixmap(dpy, fbc, pixmap, pixmap_attr);
+    debug("Got glxpixmap 0x%x for 0x%x\n", glxpixmap, pixmap);
 	check_gl(__LINE__);
-	glXQueryDrawable(dpy, glxpixmap, GLX_WIDTH, &target);
-	check_gl(__LINE__); debug("GLX is %d width\n", target);
-	glXQueryDrawable(dpy, glxpixmap, GLX_HEIGHT, &target);
-	check_gl(__LINE__); debug("GLX is %d height\n", target);
-        glXQueryDrawable(dpy, glxpixmap, GLX_TEXTURE_TARGET_EXT, &target);
+	glXQueryDrawable(dpy, glxpixmap, GLX_WIDTH, &v);
+	check_gl(__LINE__); debug("GLX is %d width\n", v);
+	glXQueryDrawable(dpy, glxpixmap, GLX_HEIGHT, &v);
+	check_gl(__LINE__); debug("GLX is %d height\n", v);
+    glXQueryDrawableProc(dpy, glxpixmap, GLX_TEXTURE_TARGET_EXT, &target);
 	check_gl(__LINE__); debug("GLX is 0x%x\n", target);
 	glGenTextures(1, &texture);
 	check_gl(__LINE__);
@@ -102,7 +116,7 @@ void add(Window w) {
 	workspace[i].glxpixmap = glxpixmap;
 	workspace[i].target = target;
 	workspace[i].texture = texture;
-	XGetWindowAttributes(dpy, w, &(workspace[i].geom));
+    XGetWindowAttributes(dpy, w, &(workspace[i].geom));
 }
 
 
@@ -113,6 +127,8 @@ int on_xerror(Display* dpy, XErrorEvent* e) {
 	return 1;
 }
 
+void on_keypress(XEvent* e) { }
+
 void on_maprequest(XEvent* e) {
 	Window w = e->xmap.window;
 	if (w == root)
@@ -121,7 +137,7 @@ void on_maprequest(XEvent* e) {
 }
 
 void on_clientmessage(XEvent* e) {
-	info("Got client message\n");
+	//info("Got client message\n");
 	draw();
 }
 
@@ -139,23 +155,40 @@ void fbconfig_attrs(GLXFBConfig fbc, int* width, int* height,
 
 GLXFBConfig choose_fbconfig() {
 	int i, nfbc;
-    	GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, fbconfig_attr, &nfbc);
+    GLXFBConfig* fbc = glXChooseFBConfig(dpy, screen, fbconfig_attr, &nfbc);
 	check_gl(__LINE__);
+    if (fbc == NULL)
+        die(1, "No valid FBConfigs.\n");
 	for (i=0; i<nfbc; i++) {
-		/*
 		int v;
-		if (!vi || vi->visualid != vid) continue;
-		glXGetFBConfigAttrib(dpy, fbc[i], GLX_DRAWABLE_TYPE, &v);
-		if (!(v & GLX_PIXMAP_BIT)) continue;
-		glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_TARGETS_EXT, &v);
-		if (!(v & GLX_TEXTURE_RECTANGLE_BIT_EXT)) continue;
-		glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &v);
-		if (!(v)) glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_RGB_EXT, &v);
-		if (!(v)) continue;
-		*/
-		break;
+        continue;
+		//if (!vi || vi->visualid != vid) continue;
+        debug("FBConfig #%d:\n", i);
+        glXGetFBConfigAttrib(dpy, fbc[i], GLX_DRAWABLE_TYPE, &v);
+        debug("GLX_DRAWABLE_TYPE: ");
+        if (v & GLX_WINDOW_BIT)  log("WINDOW ");
+        if (v & GLX_PIXMAP_BIT)  log("PIXMAP ");
+        if (v & GLX_PBUFFER_BIT) log("PBUFFER ");
+        log("\n");
+        glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_TARGETS_EXT, &v);
+        debug("GLX_BIND_TO_TEXTURE_TARGETS_EXT: ");
+        if (v & GLX_TEXTURE_1D_BIT_EXT) log("1D ");
+        if (v & GLX_TEXTURE_2D_BIT_EXT) log("2D ");
+        if (v & GLX_TEXTURE_RECTANGLE_BIT_EXT) log("RECTANGLE ");
+        log("\n");
+        glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_RGBA_EXT, &v);
+        debug("GLX_BIND_TO_TEXTURE_RGBA_EXT: ");
+        if (v) log("yes ");
+        else   log("no ");
+        log("\n");
+        glXGetFBConfigAttrib(dpy, fbc[i], GLX_BIND_TO_TEXTURE_RGB_EXT, &v);
+        debug("GLX_BIND_TO_TEXTURE_RGB_EXT: ");
+        if (v) log("yes ");
+        else   log("no ");
+        log("\n");
 	}
 
+    i = 0;
 	if (i == nfbc)
 		die(2, "No FBCofig found!\n"); 
 
@@ -171,11 +204,11 @@ void check_gl(int line) {
 void draw_background() {
 	glBegin(GL_QUADS);
 		glColor3f(.7, 0., .9);
-		glVertex3f(-.95, -.95, 0.);
-		glVertex3f( .95, -.95, 0.);
+		glVertex3f( 5.00f, 5.000f, 1.5f);
+		glVertex3f( width-5.0f, 5.000f, 1.5f);
 		glColor3f(.3, 0., .4);
-		glVertex3f( .95,  .95, 0.);
-		glVertex3f(-.95,  .95, 0.);
+		glVertex3f( width-5.0f, height-5.0f, 1.5f);
+		glVertex3f( 5.00f, height-5.0f, 1.5f);
 	glEnd();
 	check_gl(__LINE__);
 }
@@ -185,7 +218,7 @@ void draw() {
 	GLfloat width, height;
 	glXWaitX(); check_gl(__LINE__);
 	//XGrabServer(dpy);
-	glClearColor(0.4, 0.0, 0.0, 0.0);
+	glClearColor(0.0, 0.0, 0.0, 0.0);
 	glClear(GL_COLOR_BUFFER_BIT); check_gl(__LINE__);
 	
 	draw_background();
@@ -194,15 +227,15 @@ void draw() {
 		if (workspace == NULL || workspace[i].window == 0)
 			break;
 		Client client = workspace[i];
-		width = (GLfloat)client.geom.width;
-		height = (GLfloat)client.geom.height;
-		info("Drawing %d window => 0x%x, %f x %f\n", i, client.window, width, height);
+		width = (GLfloat) client.geom.width;
+		height = (GLfloat) client.geom.height;
+		//info("Drawing %d window => 0x%x, %g x %g\n", i, client.window, width, height);
 		if(client.geom.depth == 32) {
-                	info("Using blending\n");
+            info("Using blending\n");
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA); // X windows are premultiplied
 		} else
-                	glDisable(GL_BLEND);
+            glDisable(GL_BLEND);
 
         	
  	   	glEnable(client.target); check_gl(__LINE__); 
@@ -213,11 +246,11 @@ void draw() {
 		glTexParameterf(GL_TEXTURE_RECTANGLE, GL_TEXTURE_MAG_FILTER, GL_LINEAR); 
 		check_gl(__LINE__);
 		glBegin(GL_QUADS);
-			glColor3d(0.0, 0.0, 0.0);
-			glTexCoord2f(left*width,  bottom*height);	glVertex2f(-width/200.0f,-height/200.0f);
-			glTexCoord2f(left*width,     top*height);	glVertex2f(-width/200.0f,+height/200.0f);
-			glTexCoord2f(right*width,    top*height);	glVertex2f(+width/200.0f,+height/200.0f);
-			glTexCoord2f(right*width, bottom*height);	glVertex2f(+width/200.0f,-height/200.0f);
+			glColor3d(1.0, 1.0, 1.0);
+			glTexCoord2f(left*width,  bottom*height);   glVertex3f(0.00f, 0.000f, 1.0f);
+			glTexCoord2f(left*width,     top*height);	glVertex3f(0.00f, height, 1.0f);
+			glTexCoord2f(right*width,    top*height);	glVertex3f(width, height, 1.0f);
+			glTexCoord2f(right*width, bottom*height);	glVertex3f(width, 0.000f, 1.0f);
 		glEnd();
 		check_gl(__LINE__);
 		glBindTexture(client.target, 0); check_gl(__LINE__); 
@@ -225,7 +258,7 @@ void draw() {
 		glXReleaseTexImageProc(dpy, client.glxpixmap, GLX_FRONT_LEFT_EXT); 
 		check_gl(__LINE__);
 	}
-        glXWaitGL(); check_gl(__LINE__); 
+    glXWaitGL(); check_gl(__LINE__); 
 	glXSwapBuffers(dpy, canvas); check_gl(__LINE__); 
 	usleep(2000);  // 50Hz
 	XEvent ev;
@@ -283,7 +316,8 @@ GLXWindow create_canvas(void) {
 	XVisualInfo* vi = glXGetVisualFromFBConfig(dpy, fbc);
 	check_gl(__LINE__);
 	fbconfig_attrs(fbc, &width, &height, &top, &bottom);
-    	sattr.colormap = XCreateColormap(dpy, root, vi->visual, AllocNone);
+    sattr.colormap = XCreateColormap(dpy, root, vi->visual, AllocNone);
+    ratio = ((GLfloat) width) / ((GLfloat) height);
 	w = XCreateWindow(dpy, overlay, 0, 0, width, height, 0, vi->depth, InputOutput, vi->visual, CWColormap, &sattr);
 	c = glXCreateWindow(dpy, fbc, w, NULL);
 	check_gl(__LINE__);
@@ -293,6 +327,7 @@ GLXWindow create_canvas(void) {
 	context = glXCreateNewContext(dpy, fbc, GLX_RGBA_TYPE, NULL, direct);
 	check_gl(__LINE__);
 	glXMakeCurrent(dpy, c, context); check_gl(__LINE__);
+    info("Canvas is %d x %d (ratio: %g)\n", width, height, ratio);
 	return c;
 }
 
@@ -317,9 +352,60 @@ void setup_gl(void) {
 	*(void**) (&glXQueryDrawableProc) = glXGetProcAddress((GLubyte*)"glXQueryDrawable");
 	*(void**) (&glXBindTexImageProc) = glXGetProcAddress((GLubyte*)"glXBindTexImageEXT");
 	*(void**) (&glXReleaseTexImageProc) = glXGetProcAddress((GLubyte*)"glXReleaseTexImageEXT");
-	
+	if (glXQueryDrawableProc == NULL)
+        die(1, "No glXQueryDrawableProc\n");
+	if (glXBindTexImageProc == NULL)
+        die(1, "No glXBindTexImageProc\n");
+	if (glXQueryDrawableProc == NULL)
+        die(1, "No glXReleaseTexImageProc\n");
 	XMapSubwindows(dpy, overlay);
-	for_windows(root, &add);
+
+    info("Defined viewport as %d, %d (ratio = %g)\n", width, height, ratio);
+    glViewport(0, 0, width, height);
+    glMatrixMode(GL_PROJECTION);
+    glOrtho(0, width, height, 0, -2, 2);
+    glMatrixMode(GL_MODELVIEW);
+    //glOrtho(-1.0f, +1.0f, -1.0f*ratio, +1.0f*ratio, 1e-2f, 1e+4f);
+    //for_windows(root, &print);
+	//for_windows(root, &add);
+}
+
+void on_signal(int sig) {
+    debug("Caught signal %d.\n", sig);
+    clean();
+}
+
+void setup_app(void) {
+    struct sigaction action;
+    sigset_t empty;
+    sigemptyset(&empty);
+    action.sa_handler = on_signal;
+    action.sa_mask = empty;
+    sigaction(SIGHUP, &action, NULL);
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGKILL, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+    debug("Configured signal handler\n");
+}
+
+void check_features(void) {
+    int event_base, error_base, glxver;
+    int major = 0, minor = 3;
+    if(!XCompositeQueryExtension(dpy, &event_base, &error_base))
+        die(1, "Composite extension not available\n");
+    if(!XCompositeQueryVersion(dpy, &major, &minor))
+        die(1, "Composite extension version >=0.3 is required\n");
+    if(!XShapeQueryExtension(dpy, &event_base, &error_base))
+        die(1, "Shape extension not available\n");
+    if(!XDamageQueryExtension(dpy, &event_base, &error_base))
+        die(1, "Damage extension not available\n");
+    if(!glXQueryExtension(dpy, &event_base, &error_base))
+        die(1, "GLX extension not available\n");
+    glXQueryVersion(dpy, &major, &minor);
+    glxver = MAKE_GL_VERSION(major, minor, 0);
+    if(glxver < 0x010300) // GLX 1.3 required
+        die(1, "GLX version >=1.3 is required\n");
+    info("All features supported\n");
 }
 
 void setup_x(void) {
@@ -327,7 +413,7 @@ void setup_x(void) {
 	root = RootWindow(dpy, screen);
 
 	XSetErrorHandler(on_xerror);
-	XSelectInput (dpy, root, SubstructureNotifyMask|VisibilityChangeMask|ExposureMask);
+	XSelectInput (dpy, root, SubstructureNotifyMask|KeyPressMask|VisibilityChangeMask|ExposureMask);
 	XCompositeRedirectSubwindows(dpy, root, CompositeRedirectAutomatic);
 
 	overlay = create_overlay();
@@ -347,8 +433,10 @@ void start(void) {
 }
 
 void clean(void) {
-	debug("Quit.");
-	XCloseDisplay(dpy);
+	debug("Quit.\n");
+    stop = 1;
+    if (dpy)
+        XCloseDisplay(dpy);
 }
 
 void for_windows(Window w, void (*f)(Window w)) {
@@ -363,14 +451,16 @@ void for_windows(Window w, void (*f)(Window w)) {
 }
 
 int main(int argc, char** argv) {
-	dpy = XOpenDisplay(NULL);
+    dpy = XOpenDisplay(NULL);
 	if(!dpy)
 		die(ERR_CANNOT_OPEN_DISPLAY, "Cannot open display!\n");
-	setup_x();
+    setup_app();
+    check_features();
+    setup_x();
 	setup_gl();
 	start();
 	clean();
-	return 0;
+    return 0;
 }
 
 void print(Window w) {

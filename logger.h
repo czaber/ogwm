@@ -9,6 +9,7 @@
 #define ERR_CANNOT_OPEN_DISPLAY 1
 #define ERR_INVALID_TEXTURE 2
 // Log levels
+#define LOG     9
 #define DEBUG	4
 #define INFO	3
 #define NOTIFY	2
@@ -20,6 +21,7 @@
 #define info(args...)	logger(INFO, args)
 #define warn(args...)	logger(WARN, args)
 #define notify(args...)	logger(NOTIFY, args)
+#define log(args...)	logger(LOG, args)
 
 #define die(status,args...) {error(args); exit(status); clean();}
 
@@ -33,7 +35,7 @@ void logger(int level, const char* format, ...) {
 		case INFO: fprintf(stderr, "\033[0;32m[INFO]"); break;
 		case WARN: fprintf(stderr, "\033[0;33m[WARN]"); break;
 		case NOTIFY: fprintf(stderr, "\033[0;35m[NOTIFY]"); break;
-		default: fprintf(stderr, "\033[0;35m[LOG]"); break;
+		default: break;
 	}
 	va_start(args, format);
 	fprintf(stderr, " \033[0;20m");
